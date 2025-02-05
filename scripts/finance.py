@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.stats import norm
+import yfinance as yf
+from datetime import datetime
 
 def black_scholes_call_price(S0, K, r, T, sigma):
     """
@@ -25,7 +27,7 @@ def black_scholes_call_price(S0, K, r, T, sigma):
     return call_price
 
 
-def estimate_annualized_volatility(returns, trading_days=252):
+def annualized_volatility(returns, trading_days=252):
     """
     Estimate the annualized volatility of a stock based on its daily returns.
     
@@ -74,3 +76,134 @@ def estimate_annualized_volatility(returns, trading_days=252):
     annualized_volatility = daily_volatility * np.sqrt(trading_days)
     
     return annualized_volatility, daily_volatility, daily_mean
+
+def historical_annualized_volatility(ticker, start, end, trading_days=252):
+    """
+    Download historical data for the given ticker between start and end dates,
+    compute the daily returns, and then estimate the annualized volatility.
+    
+    Parameters:
+    - ticker: str, stock ticker symbol (e.g., 'AAPL')
+    - start: str, start date in 'YYYY-MM-DD' format
+    - end: str, end date in 'YYYY-MM-DD' format
+    - trading_days: int, number of trading days per year (default=252)
+    
+    Returns:
+    - annualized_volatility: The annualized volatility (σ) as a decimal.
+    - daily_volatility: The computed daily volatility (σ_d) as a decimal.
+    - daily_mean: The computed daily mean log return (μ_d).
+    """
+    # Download historical data using yfinance
+    data = yf.download(ticker, start=start, end=end)
+    if data.empty:
+        raise ValueError(f"No data found for ticker {ticker} between {start} and {end}.")
+    
+    # Compute daily returns based on closing prices
+    # The percentage change gives R_n = (S(n) - S(n-1)) / S(n-1)
+    daily_returns = data['Close'].pct_change().dropna()
+    
+    # Use the previously defined function to estimate volatility
+    ann_vol, daily_vol, daily_mu = annualized_volatility(daily_returns.values, trading_days)
+    
+    return ann_vol, daily_vol, daily_mu
+
+def get_current_stock_price(ticker):
+    """
+    Get the current (real-time) stock price for the given ticker.
+    
+    Parameters:
+    - ticker: str, the stock ticker symbol (e.g., 'AAPL')
+    
+    Returns:
+    - price: float, the current market price of the stock.
+    
+    Note: This uses yfinance's info attribute which provides the regular market price.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        # Option 1: Using fast_info (if available)
+        if hasattr(stock, 'fast_info'):
+            price = stock.fast_info['lastPrice']
+        else:
+            # Fallback: use the info dictionary
+            price = stock.info.get('regularMarketPrice')
+        if price is None:
+            raise ValueError("Current price not available.")
+        return price
+    except Exception as e:
+        print(f"Error retrieving current stock price for {ticker}: {e}")
+        return None
+import yfinance as yf
+
+def get_current_option_price(ticker, expiration, strike, option_type='call'):
+    """
+    Get the current market price for an option on the given stock.
+    
+    Parameters:
+    - ticker: str, the stock ticker symbol (e.g., 'AAPL')
+    - expiration: str, the expiration date in 'YYYY-MM-DD' format
+    - strike: float, the option's strike price
+    - option_type: str, 'call' or 'put' (default is 'call')
+    
+    Returns:
+    - option_price: float, the current price (last trade price) of the option.
+    
+    Raises a ValueError if the option is not found.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        # Get the option chain for the specified expiration date.
+        opt_chain = stock.option_chain(expiration)
+        
+        # Select the appropriate DataFrame based on option type.
+        if option_type.lower() == 'call':
+            df = opt_chain.calls
+        elif option_type.lower() == 'put':
+            df = opt_chain.puts
+        else:
+            raise ValueError("option_type must be either 'call' or 'put'.")
+        
+        # Find the row(s) where the strike price matches (or nearly matches) the input.
+        # Here we assume an exact match. (You could add tolerance if needed.)
+        option_row = df[df['strike'] == strike]
+        if option_row.empty:
+            raise ValueError(f"No {option_type} option found with strike {strike} for {ticker} expiring on {expiration}.")
+        
+        # Return the last traded price for the option.
+        # Note: Field name might be 'lastPrice' or similar.
+        option_price = option_row.iloc[0]['lastPrice']
+        return option_price
+    except Exception as e:
+        print(f"Error retrieving option price for {ticker}: {e}")
+        return None
+    
+def time_to_maturity(expiration_date, current_date=None):
+    """
+    Calculate time to maturity (T) in years from the current date to the expiration date.
+    
+    Parameters:
+    - expiration_date: str, expiration date in "YYYY-MM-DD" format (e.g., "2026-01-16")
+    - current_date: datetime, optional, current date; if None, defaults to today's date.
+    
+    Returns:
+    - T: float, time to maturity in years.
+    
+    Note:
+    - This function uses 365.25 days per year to account for leap years.
+    """
+    if current_date is None:
+        current_date = datetime.today()
+        
+    # Parse the expiration date
+    expiration = datetime.strptime(expiration_date, "%Y-%m-%d")
+    
+    if expiration < current_date:
+        raise ValueError("Expiration date is in the past.")
+    
+    # Compute the difference in days
+    delta = expiration - current_date
+    days = delta.days
+    
+    # Convert days to years
+    T = days / 365.25
+    return T
