@@ -6,7 +6,9 @@ import yfinance as yf
 import scipy.stats as stats
 import pandas as pd
 from scipy.stats import lognorm
-
+from finance import black_scholes_price
+import ipywidgets as widgets
+from ipywidgets import interact
 
 def plot_gbm_path(S0=100, mu=0.05, sigma=0.2, T=1, N=252, seed=None, n_paths=1):
     """
@@ -202,3 +204,146 @@ def plot_log_normal_distribution(mu, S0, sigma, T, num_points=1000):
              bbox=dict(facecolor='wheat', alpha=0.5))
     
     plt.show()
+
+
+
+def plot_bs_option_sensitivity(option_type, S0, E, r, T, sigma):
+    """
+    Plot how the Black-Scholes option price changes as each parameter varies.
+    Five subplots are generated (arranged in one row) showing the option price versus:
+      - Underlying Price (S0)
+      - Strike Price (K)
+      - Risk-free Rate (r)
+      - Time to Maturity (T)
+      - Volatility (sigma)
+      
+    In each subplot, a vertical dashed line and a marker point indicate the original value.
+    
+    Parameters:
+    - option_type: str, 'call' or 'put'
+    - S0: float, current underlying price.
+    - K: float, strike price.
+    - r: float, risk-free interest rate.
+    - T: float, time to maturity (in years).
+    - sigma: float, volatility.
+    
+    Returns:
+    - None (displays the plots)
+    """
+    # Define parameter ranges around the base values.
+    S0_range    = np.linspace(0.5 * S0, 1.5 * S0, 100)
+    K_range     = np.linspace(0.5 * E, 1.5 * E, 100)
+    r_max       = r * 1.5 if r > 0 else 0.1
+    r_range     = np.linspace(0, r_max, 100)
+    T_range     = np.linspace(0.01, 2 * T, 100)   # start at 0.01 to avoid division by zero
+    sigma_range = np.linspace(0.01, 2 * sigma, 100)
+
+    # Create a 1x5 grid for a more condensed layout.
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4))
+    
+    # 1. Option Price vs Underlying Price (S0)
+    price_vs_S0 = black_scholes_price(option_type, S0_range, E, r, T, sigma)
+    axes[0].plot(S0_range, price_vs_S0, color='blue', linewidth=2)
+    base_price = black_scholes_price(option_type, S0, E, r, T, sigma)
+    axes[0].scatter([S0], [base_price], color='black', zorder=5)
+    axes[0].axvline(S0, color='black', linestyle='--', alpha=0.7)
+    axes[0].set_title('Underlying Price\n(S0)', fontsize=12)
+    axes[0].set_xlabel('S_0')
+    axes[0].set_ylabel('Option Price')
+    axes[0].grid(True)
+    
+    # 2. Option Price vs Strike Price (K)
+    price_vs_K = black_scholes_price(option_type, S0, K_range, r, T, sigma)
+    axes[1].plot(K_range, price_vs_K, color='green', linewidth=2)
+    base_price = black_scholes_price(option_type, S0, E, r, T, sigma)
+    axes[1].scatter([E], [base_price], color='black', zorder=5)
+    axes[1].axvline(E, color='black', linestyle='--', alpha=0.7)
+    axes[1].set_title('Strike Price\n(K)', fontsize=12)
+    axes[1].set_xlabel('E')
+    axes[1].set_ylabel('Option Price')
+    axes[1].grid(True)
+    
+    # 3. Option Price vs Risk-free Rate (r)
+    price_vs_r = black_scholes_price(option_type, S0, E, r_range, T, sigma)
+    axes[2].plot(r_range, price_vs_r, color='red', linewidth=2)
+    base_price = black_scholes_price(option_type, S0, E, r, T, sigma)
+    axes[2].scatter([r], [base_price], color='black', zorder=5)
+    axes[2].axvline(r, color='black', linestyle='--', alpha=0.7)
+    axes[2].set_title('Risk-free Rate\n(r)', fontsize=12)
+    axes[2].set_xlabel('r')
+    axes[2].set_ylabel('Option Price')
+    axes[2].grid(True)
+    
+    # 4. Option Price vs Time to Maturity (T)
+    price_vs_T = black_scholes_price(option_type, S0, E, r, T_range, sigma)
+    axes[3].plot(T_range, price_vs_T, color='purple', linewidth=2)
+    base_price = black_scholes_price(option_type, S0, E, r, T, sigma)
+    axes[3].scatter([T], [base_price], color='black', zorder=5)
+    axes[3].axvline(T, color='black', linestyle='--', alpha=0.7)
+    axes[3].set_title('Time to Maturity\n(T)', fontsize=12)
+    axes[3].set_xlabel('T (years)')
+    axes[3].set_ylabel('Option Price')
+    axes[3].grid(True)
+    
+    # 5. Option Price vs Volatility (sigma)
+    price_vs_sigma = black_scholes_price(option_type, S0, E, r, T, sigma_range)
+    axes[4].plot(sigma_range, price_vs_sigma, color='orange', linewidth=2)
+    base_price = black_scholes_price(option_type, S0, E, r, T, sigma)
+    axes[4].scatter([sigma], [base_price], color='black', zorder=5)
+    axes[4].axvline(sigma, color='black', linestyle='--', alpha=0.7)
+    axes[4].set_title('Volatility\n(sigma)', fontsize=12)
+    axes[4].set_xlabel('sigma')
+    axes[4].set_ylabel('Option Price')
+    axes[4].grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+def interactive_bs_s0_plot(option_type="call", base_S0=100):
+    """
+    Creates an interactive plot of the option price (using the Black-Scholes formula)
+    as the underlying price S0 varies, with adjustable parameters for the other variables.
+    
+    The plot shows:
+      - The option price curve versus S0 (ranging from 0.5*base_S0 to 1.5*base_S0)
+      - A marker and a dashed vertical line indicating the base S0 value.
+    
+    You can interactively adjust:
+      - Strike Price (K)
+      - Risk-free Rate (r)
+      - Time to Maturity (T)
+      - Volatility (sigma)
+    
+    Parameters:
+    - option_type: str, either 'call' or 'put' (default is 'call')
+    - base_S0: float, the base underlying price at which a marker is shown (default is 100)
+    
+    To use in Google Colab, simply run:
+    
+        from bs_interactive import interactive_bs_s0_plot
+        interactive_bs_s0_plot()
+    """
+    def plot_function(K, r, T, sigma):
+        # Define a range for S0 around the base value.
+        S0_range = np.linspace(0.5 * base_S0, 1.5 * base_S0, 200)
+        prices = black_scholes_price(option_type, S0_range, K, r, T, sigma)
+        base_price = black_scholes_price(option_type, base_S0, K, r, T, sigma)
+        
+        plt.figure(figsize=(8, 5))
+        plt.plot(S0_range, prices, color='blue', lw=2, label=f"{option_type.title()} Price")
+        plt.scatter([base_S0], [base_price], color='black', zorder=5, label=f"Base S₀ = {base_S0}")
+        plt.axvline(base_S0, color='black', linestyle='--', alpha=0.7)
+        plt.title(f"Option Price vs Underlying Price (S₀)\n(K = {K}, r = {r}, T = {T}, σ = {sigma})", fontsize=14)
+        plt.xlabel("Underlying Price (S₀)", fontsize=12)
+        plt.ylabel("Option Price", fontsize=12)
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+    
+    # Create interactive widgets for K, r, T, and sigma.
+    interact(
+        plot_function,
+        K=widgets.FloatSlider(value=100, min=50, max=150, step=1, description='Strike (K)'),
+        r=widgets.FloatSlider(value=0.05, min=0.0, max=0.2, step=0.005, description='Risk-free (r)'),
+        T=widgets.FloatSlider(value=1, min=0.0, max=5, step=0.01, description='Time (T)'),
+        sigma=widgets.FloatSlider(value=0.2, min=0.1, max=1.0, step=0.01, description='Volatility (σ)')
+    )

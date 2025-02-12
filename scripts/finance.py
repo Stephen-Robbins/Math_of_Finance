@@ -3,6 +3,8 @@ from scipy.stats import norm
 import yfinance as yf
 from datetime import datetime
 
+
+
 def black_scholes_call_price(S0, K, r, T, sigma):
     """
     Calculate the Black-Scholes price of a European call option (no dividend).
@@ -207,3 +209,75 @@ def time_to_maturity(expiration_date, current_date=None):
     # Convert days to years
     T = days / 365.25
     return T
+
+
+
+def black_scholes_price(option_type, S0, K, r, T, sigma):
+    """
+    Calculate the Black-Scholes price of a European call or put option (no dividends).
+
+    Parameters:
+    - option_type: str, 'call' or 'put'
+    - S0: float or array-like, Current stock price.
+    - K: float, Strike price.
+    - r: float, Risk-free interest rate (annualized).
+    - T: float, Time to maturity (in years).
+    - sigma: float, Volatility of the underlying asset (annualized).
+
+    Returns:
+    - price: float or array-like, The Black-Scholes price of the option.
+    """
+    # Compute d1 and d2 (works with scalar or array-like S0)
+    d1 = (np.log(S0 / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    
+    if option_type.lower() == 'call':
+        price = S0 * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    elif option_type.lower() == 'put':
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S0 * norm.cdf(-d1)
+    else:
+        raise ValueError("Invalid option type. Please choose 'call' or 'put'.")
+    
+    return price
+
+def monte_carlo_option_price(S0, E, r, T, sigma, payoff_func=None, n_sims=10000):
+    """
+    Estimate the price of an option using Monte Carlo simulation with a user-specified payoff.
+
+    The terminal stock price S_T is simulated under the risk-neutral measure:
+    
+        S_T = S0 * exp((r - 0.5*sigma^2)*T + sigma*sqrt(T)*Z),
+    
+    where Z ~ N(0,1). The payoff is then calculated for each simulation, and its
+    discounted average is returned as the Monte Carlo price.
+
+    Parameters:
+    - S0: float, current stock price.
+    - E: float, strike price (or any parameter needed by the payoff function).
+    - r: float, risk-free interest rate (annualized).
+    - T: float, time to maturity (in years).
+    - sigma: float, volatility of the underlying asset (annualized).
+    - payoff_func: function or None. A function that accepts an array of simulated 
+          terminal prices S_T and returns an array of payoffs. If None, defaults to the 
+          European call payoff: lambda S_T: np.maximum(S_T - E, 0).
+    - n_sims: int, number of Monte Carlo simulations (default: 10,000).
+
+    Returns:
+    - mc_price: float, the Monte Carlo estimated option price.
+    """
+    # Default to the European call option payoff if no function is provided.
+    if payoff_func is None:
+        payoff_func = lambda S_T: np.maximum(S_T - E, 0)
+    
+    # Generate n_sims random samples from the standard normal distribution.
+    Z = np.random.standard_normal(n_sims)
+    
+    # Simulate the terminal stock prices.
+    S_T = S0 * np.exp((r - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * Z)
+    
+    # Calculate the payoff using the provided function.
+    payoffs = payoff_func(S_T)
+    
+    # Discount the average payoff to obtain the present value.
+    mc_price = np.exp(-r * T) * np.mean(payoffs)
+    return mc_price
