@@ -2,6 +2,8 @@ import numpy as np
 from scipy.stats import norm
 import yfinance as yf
 from datetime import datetime
+from scipy.optimize import newton
+import pandas as pd  
 
 
 
@@ -281,3 +283,198 @@ def monte_carlo_option_price(S0, E, r, T, sigma, payoff_func=None, n_sims=10000)
     # Discount the average payoff to obtain the present value.
     mc_price = np.exp(-r * T) * np.mean(payoffs)
     return mc_price
+
+
+class Option:
+    def __init__(self, S, E, T, r, sigma=None, premium=None, option_type='call'):
+        """
+        Initialize an Option instance.
+        
+        Parameters:
+            S : float
+                Current underlying asset price.
+            K : float
+                Strike price.
+            T : float
+                Time to expiration (in years).
+            r : float
+                Annual risk-free interest rate.
+            sigma : float, optional
+                Volatility (if known). If not provided, premium must be given.
+            premium : float, optional
+                Market price of the option (used to back out implied volatility if sigma is not provided).
+            option_type : str, default 'call'
+                Type of option: 'call' or 'put'.
+        """
+        self.S = S
+        self.K = E
+        self.T = T
+        self.r = r
+        self.option_type = option_type.lower()
+        
+        if sigma is None and premium is None:
+            raise ValueError("Provide either volatility (sigma) or premium (market price).")
+        
+        # If sigma is not provided, compute implied volatility from the market price.
+        if sigma is None:
+            self.premium = premium
+            self.sigma = self.implied_volatility(premium)
+        else:
+            self.sigma = sigma
+            self.premium = premium if premium is not None else self.price()
+    
+    def d1(self, sigma=None):
+        """
+        Calculate the d1 term used in the Black-Scholes formulas.
+        """
+        sigma = sigma if sigma is not None else self.sigma
+        return (np.log(self.S / self.K) + (self.r + 0.5 * sigma ** 2) * self.T) / (sigma * np.sqrt(self.T))
+    
+    def d2(self, sigma=None):
+        """
+        Calculate the d2 term used in the Black-Scholes formulas.
+        """
+        sigma = sigma if sigma is not None else self.sigma
+        return self.d1(sigma) - sigma * np.sqrt(self.T)
+    
+    def price(self, sigma=None):
+        """
+        Compute the Black-Scholes price for the option.
+        """
+        sigma = sigma if sigma is not None else self.sigma
+        d1 = self.d1(sigma)
+        d2 = self.d2(sigma)
+        if self.option_type == 'call':
+            return self.S * norm.cdf(d1) - self.K * np.exp(-self.r * self.T) * norm.cdf(d2)
+        elif self.option_type == 'put':
+            return self.K * np.exp(-self.r * self.T) * norm.cdf(-d2) - self.S * norm.cdf(-d1)
+        else:
+            raise ValueError("Invalid option type. Use 'call' or 'put'.")
+    
+    def delta(self):
+        """
+        Calculate and return the option's delta.
+        """
+        d1 = self.d1()
+        if self.option_type == 'call':
+            return norm.cdf(d1)
+        elif self.option_type == 'put':
+            return norm.cdf(d1) - 1
+    
+    def gamma(self):
+        """
+        Calculate and return the option's gamma.
+        """
+        d1 = self.d1()
+        return norm.pdf(d1) / (self.S * self.sigma * np.sqrt(self.T))
+    
+    def theta(self):
+        """
+        Calculate and return the option's theta.
+        """
+        d1 = self.d1()
+        d2 = self.d2()
+        term1 = - (self.S * norm.pdf(d1) * self.sigma) / (2 * np.sqrt(self.T))
+        if self.option_type == 'call':
+            term2 = - self.r * self.K * np.exp(-self.r * self.T) * norm.cdf(d2)
+            return term1 + term2
+        elif self.option_type == 'put':
+            term2 = self.r * self.K * np.exp(-self.r * self.T) * norm.cdf(-d2)
+            return term1 + term2
+    
+    def vega(self):
+        """
+        Calculate and return the option's vega.
+        """
+        d1 = self.d1()
+        return self.S * norm.pdf(d1) * np.sqrt(self.T)
+    
+    def rho(self):
+        """
+        Calculate and return the option's rho.
+        """
+        d2 = self.d2()
+        if self.option_type == 'call':
+            return self.T * self.K * np.exp(-self.r * self.T) * norm.cdf(d2)
+        elif self.option_type == 'put':
+            return -self.T * self.K * np.exp(-self.r * self.T) * norm.cdf(-d2)
+    
+    def implied_volatility_objective(self, sigma, market_price):
+        """
+        The objective function for the Newton-Raphson method to compute implied volatility.
+        """
+        return self.price(sigma) - market_price
+    
+    def implied_volatility(self, market_price):
+        """
+        Calculate the implied volatility given a market price using the Newton-Raphson method.
+        """
+        sigma_initial_guess = 0.2
+        return newton(self.implied_volatility_objective, sigma_initial_guess, args=(market_price,))
+    
+    def summary(self):
+        """
+        Return a dictionary summary of the option's price and Greeks.
+        """
+        dic= {
+            "Price": self.price(),
+            "Delta": self.delta(),
+            "Gamma": self.gamma(),
+            "Theta": self.theta(),
+            "Vega": self.vega(),
+            "Rho": self.rho(),
+            "Volatility": self.sigma
+        }
+        return pd.DataFrame(list(dic.items()), columns=["Metric", "Value"]).to_string(index=False)
+
+
+
+def gbm_lognormal_stats(x, X_t, mu, sigma, T_minus_t):
+    """
+    Calculate various statistics for a lognormal variable arising from a 
+    geometric Brownian motion (GBM) process at a future time.
+    
+    Parameters:
+        x (float or array-like): The value(s) at which to evaluate the CDF and PDF.
+        X_t (float): The value of the process at time t.
+        mu (float): Drift coefficient of the GBM process.
+        sigma (float): Volatility coefficient of the GBM process.
+        T_minus_t (float): Time difference between the future time T and current time t.
+        
+    Returns:
+        dict: A dictionary containing:
+            'cdf'      : Cumulative Distribution Function evaluated at x.
+            'pdf'      : Probability Density Function evaluated at x.
+            'mean'     : Mean of the lognormal distribution.
+            'median'   : Median of the lognormal distribution.
+            'mode'     : Mode of the lognormal distribution.
+            'variance' : Variance of the lognormal distribution.
+    """
+    # Update the parameters for the lognormal distribution
+    mu_1 = np.log(X_t) + (mu - 0.5 * sigma**2) * T_minus_t
+    sigma_1 = sigma * np.sqrt(T_minus_t)
+    
+    # Calculate the CDF and PDF at x
+    # Note: For x > 0; x can be a scalar or an array.
+    cdf = norm.cdf(np.log(x), loc=mu_1, scale=sigma_1)
+    pdf = norm.pdf(np.log(x), loc=mu_1, scale=sigma_1) / x  # Adjusted for lognormal
+    
+    # Compute moments of the lognormal distribution
+    mean = np.exp(mu_1 + 0.5 * sigma_1**2)
+    median = np.exp(mu_1)
+    mode = np.exp(mu_1 - sigma_1**2)
+    variance = (np.exp(sigma_1**2) - 1) * np.exp(2 * mu_1 + sigma_1**2)
+    
+    stats= {
+        'cdf': cdf,
+        'pdf': pdf,
+        'mean': mean,
+        'median': median,
+        'mode': mode,
+        'variance': variance
+    }
+    for key, value in stats.items():
+        print(f"{key.capitalize()}: {value:.4f}" if np.isscalar(value) else f"{key.capitalize()}: {value}")
+
+
+
