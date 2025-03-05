@@ -6,7 +6,7 @@ import yfinance as yf
 import scipy.stats as stats
 import pandas as pd
 from scipy.stats import lognorm
-from finance import black_scholes_price
+from finance import black_scholes_price, Option
 import ipywidgets as widgets
 from ipywidgets import interact
 
@@ -347,3 +347,118 @@ def interactive_bs_s0_plot(option_type="call", base_S0=100):
         T=widgets.FloatSlider(value=1, min=0.0, max=5, step=0.01, description='Time (T)'),
         sigma=widgets.FloatSlider(value=0.2, min=0.1, max=1.0, step=0.01, description='Volatility (σ)')
     )
+
+def plot_volatility_smile(options, title='Volatility Smile', moneyness=False):
+    """
+    Plot the volatility smile for a set of options with different strikes.
+    
+    Parameters:
+        options : list of Option
+            List of Option instances with different strike prices.
+        title : str, default 'Volatility Smile'
+            Title for the plot.
+        moneyness : bool, default False
+            If True, plot implied volatility against moneyness (K/S) instead of strike price.
+    """
+    # Extract strike prices and implied volatilities
+    if moneyness:
+        strikes = [option.K / option.S for option in options]
+        xlabel = 'Moneyness (K/S)'
+    else:
+        strikes = [option.K for option in options]
+        xlabel = 'Strike Price'
+    vols = [option.sigma for option in options]
+    
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(strikes, vols, 'o-')
+    plt.xlabel(xlabel)
+    plt.ylabel('Implied Volatility')
+    plt.title(title)
+    plt.grid(True)
+    plt.show()
+
+def plot_volatility_term_structure(options, title='Volatility Term Structure'):
+    """
+    Plot the volatility term structure for a set of options with different expiration times.
+    
+    Parameters:
+        options : list of Option
+            List of Option instances with different expiration times.
+        title : str, default 'Volatility Term Structure'
+            Title for the plot.
+    """
+    # Extract times to expiration and implied volatilities
+    times = [option.T for option in options]
+    vols = [option.sigma for option in options]
+    
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(times, vols, 'o-')
+    plt.xlabel('Time to Expiration (years)')
+    plt.ylabel('Implied Volatility')
+    plt.title(title)
+    plt.grid(True)
+    plt.show()
+
+def compute_and_plot_implied_volatility_smile(S, E_range, T, r, premiums, option_type='call', q=0.0, title='Volatility Smile', moneyness=False):
+    """
+    Compute implied volatility for a range of strike prices and plot the volatility smile.
+    
+    Parameters:
+        S : float
+            Current underlying asset price.
+        E_range : list of float
+            Range of strike prices.
+        T : float
+            Time to expiration (in years).
+        r : float
+            Annual risk-free interest rate.
+        premiums : list of float
+            Market prices of the options corresponding to the strike prices in E_range.
+        option_type : str, default 'call'
+            Type of option: 'call' or 'put'.
+        q : float, default 0.0
+            Continuous dividend rate.
+        title : str, default 'Volatility Smile'
+            Title for the plot.
+        moneyness : bool, default False
+            If True, plot implied volatility against moneyness (K/S) instead of strike price.
+    """
+    # Compute implied volatilities
+    options = []
+    for E, premium in zip(E_range, premiums):
+        options.append(Option(S, E, T, r, premium=premium, option_type=option_type, q=q))
+    
+    # Plot the volatility smile
+    plot_volatility_smile(options, title, moneyness)
+
+def compute_and_plot_implied_volatility_term_structure(S, E, T_range, r, premiums, option_type='call', q=0.0, title='Volatility Term Structure'):
+    """
+    Compute implied volatility for a range of expiration times and plot the volatility term structure.
+    
+    Parameters:
+        S : float
+            Current underlying asset price.
+        E : float
+            Strike price.
+        T_range : list of float
+            Range of times to expiration (in years).
+        r : float
+            Annual risk-free interest rate.
+        premiums : list of float
+            Market prices of the options corresponding to the times in T_range.
+        option_type : str, default 'call'
+            Type of option: 'call' or 'put'.
+        q : float, default 0.0
+            Continuous dividend rate.
+        title : str, default 'Volatility Term Structure'
+            Title for the plot.
+    """
+    # Compute implied volatilities
+    options = []
+    for T, premium in zip(T_range, premiums):
+        options.append(Option(S, E, T, r, premium=premium, option_type=option_type, q=q))
+    
+    # Plot the volatility term structure
+    plot_volatility_term_structure(options, title)
