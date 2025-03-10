@@ -4,12 +4,52 @@ import yfinance as yf
 from datetime import datetime
 from scipy.optimize import newton
 import pandas as pd  
-import matplotlib.pyplot as plt
-
-from mpl_toolkits.mplot3d import Axes3D
 import yfinance as yf
-from datetime import datetime, timedelta
 
+
+def put_call_parity_arb(C, P, E, S, r, T):
+    """
+    Check for arbitrage via put-call parity:
+
+        C + E*e^{-rT}  ?  P + S
+
+    - C: Call price
+    - P: Put price
+    - E: Strike price
+    - S: Current stock price
+    - r: Annualized risk-free rate (decimal), e.g. 0.05 for 5%
+    - T: Time to maturity in years (e.g. 30 days = 30/365)
+
+    Returns:
+    - (arbitrage_amount, strategy)
+    """
+    # Present value of strike
+    E_discounted = E * np.exp(-r * T)
+
+    # Left-hand side (LHS) and right-hand side (RHS)
+    LHS = C + E_discounted
+    RHS = P + S
+
+    if LHS > RHS:
+        # LHS is overpriced => Sell Call, Buy Put, Borrow strike discount, Buy Stock
+        arbitrage_amount = LHS - RHS
+        strategy = (
+            f"LHS > RHS by ${arbitrage_amount:.2f}: "
+            "Sell the Call, Buy the Put, Borrow the Present Value of Strike, Buy the Stock."
+        )
+    elif LHS < RHS:
+        # RHS is overpriced => Buy Call, Sell Put, Short Stock, Invest strike discount
+        arbitrage_amount = RHS - LHS
+        strategy = (
+            f"RHS > LHS by ${arbitrage_amount:.2f}: "
+            "Buy the Call, Sell the Put, Short the Stock, Invest the Present Value of Strike."
+        )
+    else:
+        # No arbitrage
+        arbitrage_amount = 0
+        strategy = "No arbitrage. LHS == RHS."
+
+    return arbitrage_amount, strategy
 
 def black_scholes_call_price(S0, K, r, T, sigma):
     """
