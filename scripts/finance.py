@@ -104,7 +104,10 @@ def annualized_volatility(returns, trading_days=252):
     - daily_mean: The computed daily mean log return (μ_d).
     """
     # Convert the input to a NumPy array in case it's a list.
-    returns = np.array(returns)
+    returns =  np.diff(np.array(returns)) / np.array(returns)[:-1] 
+    
+
+    
     
     # Compute log returns: ln(1 + R_n)
     log_returns = np.log(1 + returns)
