@@ -75,7 +75,7 @@ def black_scholes_call_price(S0, K, r, T, sigma):
     return call_price
 
 
-def annualized_volatility(returns, trading_days=252):
+def annualized_volatility(prices, trading_days=252):
     """
     Estimate the annualized volatility of a stock based on its daily returns.
     
@@ -104,7 +104,7 @@ def annualized_volatility(returns, trading_days=252):
     - daily_mean: The computed daily mean log return (μ_d).
     """
     # Convert the input to a NumPy array in case it's a list.
-    returns =  np.diff(np.array(returns)) / np.array(returns)[:-1] 
+    returns =  np.diff(np.array(prices)) / np.array(prices)[:-1] 
     
 
     
@@ -525,3 +525,41 @@ class Option:
         return pd.DataFrame(list(dic.items()), columns=["Metric", "Value"]).to_string(index=False)
 
 
+def gbm_lognormal(x, X_t, mu, sigma, T_minus_t):
+    """
+    Calculate various statistics for a lognormal variable arising from a 
+    geometric Brownian motion (GBM) process at a future time.
+    
+    Parameters:
+        x (float or array-like): The value(s) at which to evaluate the CDF and PDF.
+        X_t (float): The value of the process at time t.
+        mu (float): Drift coefficient of the GBM process.
+        sigma (float): Volatility coefficient of the GBM process.
+        T_minus_t (float): Time difference between the future time T and current time t.
+        
+    Returns:
+        list: A list containing [cdf, pdf, mean, median, mode, variance]
+            cdf      : Cumulative Distribution Function evaluated at x.
+            pdf      : Probability Density Function evaluated at x.
+            mean     : Mean of the lognormal distribution.
+            median   : Median of the lognormal distribution.
+            mode     : Mode of the lognormal distribution.
+            variance : Variance of the lognormal distribution.
+    """
+    # Update the parameters for the lognormal distribution
+    mu_1 = np.log(X_t) + (mu - 0.5 * sigma**2) * T_minus_t
+    sigma_1 = sigma * np.sqrt(T_minus_t)
+    
+    # Calculate the CDF and PDF at x
+    # Note: For x > 0; x can be a scalar or an array.
+    cdf = norm.cdf(np.log(x), loc=mu_1, scale=sigma_1)
+    pdf = norm.pdf(np.log(x), loc=mu_1, scale=sigma_1) / x  # Adjusted for lognormal
+    
+    # Compute moments of the lognormal distribution
+    mean = np.exp(mu_1 + 0.5 * sigma_1**2)
+    median = np.exp(mu_1)
+    mode = np.exp(mu_1 - sigma_1**2)
+    variance = (np.exp(sigma_1**2) - 1) * np.exp(2 * mu_1 + sigma_1**2)
+    
+    # Return as a list instead of a dictionary
+    return [cdf, pdf, mean, median, mode, variance]
